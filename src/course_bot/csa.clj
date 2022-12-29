@@ -1,11 +1,13 @@
 (ns course-bot.csa
   (:require [morse.handlers :as handlers]
             [morse.polling :as polling]
-            [codax.core :as codax])
+            [codax.core :as codax]
+            [course-bot.report :as report])
   (:require [course-bot.misc :as misc]
             [course-bot.quiz :as quiz]
             [course-bot.presentation :as pres]
             [course-bot.general :as general]
+            [course-bot.essay :as essay]
             [course-bot.talk :as talk]))
 
 (def conf (misc/get-config "../edu-csa-internal"))
@@ -35,9 +37,35 @@
   (pres/drop-talk db conf "lab1" false)
   (pres/drop-talk db conf "lab1" true)
 
+  (essay/submit-talk db conf "essay1")
+  (essay/status-talk db conf "essay1")
+  (essay/assignreviewers-talk db conf "essay1")
+  (essay/review-talk db conf "essay1")
+  (essay/myfeedback-talk db conf "essay1")
+
+  (essay/submit-talk db conf "essay2")
+  (essay/status-talk db conf "essay2")
+  (essay/assignreviewers-talk db conf "essay2")
+  (essay/review-talk db conf "essay2")
+  (essay/myfeedback-talk db conf "essay2")
+
+  (essay/submit-talk db conf "essay3")
+  (essay/status-talk db conf "essay3")
+  (essay/assignreviewers-talk db conf "essay3")
+  (essay/review-talk db conf "essay3")
+  (essay/myfeedback-talk db conf "essay3")
+
   (quiz/startquiz-talk db conf)
   (quiz/stopquiz-talk db conf)
   (quiz/quiz-talk db conf)
+
+  (report/report-talk db conf
+                      "ID" report/stud-id
+                      "name" report/stud-name
+                      "group" report/stud-group
+                      "lab1-group" (pres/report-presentation-group "lab1")
+                      "lab1-rank" (pres/report-presentation-avg-rank conf "lab1")
+                      "lab1-score" (pres/report-presentation-score conf "lab1"))
 
   (handlers/command "help" {{id :id} :chat} (talk/send-text (-> conf :token) id (talk/helps)))
 

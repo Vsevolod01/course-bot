@@ -70,7 +70,7 @@
     (ttalk/in-history *chat 0 "The quiz was started.")
 
     (quiz-talk 1 "/quiz")
-    (ttalk/in-history *chat 1 "Хотите начать тест 'Test quiz'?")
+    (ttalk/in-history *chat 1 "Хотите начать тест 'Test quiz' (2 вопроса(-ов))?")
 
     (quiz-talk 1 "nooooooo")
     (ttalk/in-history *chat 1 "Что (yes/no)?")
@@ -79,7 +79,7 @@
     (ttalk/in-history *chat 1 "Ваше право.")
 
     (quiz-talk 1 "/quiz")
-    (ttalk/in-history *chat 1 "Хотите начать тест 'Test quiz'?")
+    (ttalk/in-history *chat 1 "Хотите начать тест 'Test quiz' (2 вопроса(-ов))?")
     (quiz-talk 1 "yes")
     (ttalk/in-history *chat 1
                       "Отвечайте цифрой. Ваш первый вопрос:"
@@ -123,7 +123,7 @@
     (ttalk/in-history *chat 0 "The quiz was started.")
 
     (quiz-talk 1 "/quiz")
-    (ttalk/in-history *chat 1 "Хотите начать тест 'Test quiz'?")
+    (ttalk/in-history *chat 1 "Хотите начать тест 'Test quiz' (2 вопроса(-ов))?")
     (quiz-talk 1 "yes")
     (quiz-talk 1 "1")
     (quiz-talk 1 "1")
@@ -150,13 +150,15 @@
 
     (stopquiz-talk 0 "yes")
     (ttalk/in-history *chat
-                      [0 (str/join "\n" '("Статистика по ответам:\n"
-                                          "1. Q1"
-                                          "  - a1"
-                                          "  - a2"
-                                          "  -- 1; 0"
-                                          "2. Q2"
-                                          "  - a3"
-                                          "  - a4"
-                                          "  -- 1; 0"))]
+                      [0 "The quiz 'Test quiz' was stopped"]
+                      [0
+                       "Q1"
+                       ""
+                       "- [1] a1"
+                       "- [0] CORRECT a2"]
+                      [0
+                       "Q2"
+                       ""
+                       "- [1] CORRECT a3"
+                       "- [0] a4"]
                       [1 "Ваш результат: 1/2"])))

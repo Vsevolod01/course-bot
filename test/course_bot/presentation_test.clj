@@ -6,6 +6,7 @@
             [course-bot.general :as general]
             [course-bot.misc :as misc]
             [course-bot.talk :as talk]
+            [course-bot.report :as report]
             [course-bot.talk-test :as ttalk]))
 
 (defn register-user [*chat start-talk id name]
@@ -103,6 +104,7 @@
     (testing "check and reject"
       (check-talk 0 "/lab1check")
       (ttalk/in-history *chat 0
+                        "Wait for review: 1"
                         "Approved presentation in 'lgr1':\n"
                         "We receive from the student (group gr1): \n\nTopic: bla-bla-bla the best"
                         "bla-bla-bla the best"
@@ -148,6 +150,7 @@
     (testing "check and reject 2"
       (check-talk 0 "/lab1check")
       (ttalk/in-history *chat 0
+                        "Wait for review: 1"
                         "Approved presentation in 'lgr1':\n"
                         "Remarks:"
                         "Please, add details!"
@@ -184,6 +187,7 @@
 
     (check-talk 0 "/lab1check")
     (ttalk/in-history *chat 0
+                      "Wait for review: 1"
                       "Approved presentation in 'lgr1':\n"
                       "Remarks:"
                       "Please, add details!"
@@ -238,13 +242,14 @@
                                          "- pres 2 (Alice) - ON-REVIEW")))
 
       (check-talk 0 "/lab1check")
-      (ttalk/in-history *chat 0
-                        (str/join "\n" '("Approved presentation in 'lgr1':"
-                                         "- bla-bla-bla 2 (Bot Botovich)"))
-                        (str/join "\n" '("We receive from the student (group gr1): \n"
-                                         "Topic: pres 2"))
-                        "pres 2"
-                        "Approve (yes or no)?")
+      (ttalk/in-history *chat
+                        [0 "Wait for review: 1"]
+                        [0 "Approved presentation in 'lgr1':"
+                         "- bla-bla-bla 2 (Bot Botovich)"]
+                        [0 "We receive from the student (group gr1): \n"
+                         "Topic: pres 2"]
+                        [0 "pres 2"]
+                        [0 "Approve (yes or no)?"])
       (check-talk 0 "yes")
       (ttalk/in-history *chat
                         [0 "OK, student will receive his approve.\n\n/lab1check"]
@@ -509,7 +514,12 @@
         check-talk (ttalk/mock-talk pres/check-talk db conf "lab1")
         schedule-talk (ttalk/mock-talk pres/schedule-talk db conf "lab1")
         agenda-talk (ttalk/mock-talk pres/agenda-talk db conf "lab1")
-        feedback-talk (ttalk/mock-talk pres/feedback-talk db conf "lab1")]
+        feedback-talk (ttalk/mock-talk pres/feedback-talk db conf "lab1")
+        report-talk (ttalk/mock-talk report/report-talk db conf
+                                     "ID" report/stud-id
+                                     "pres-group" (pres/report-presentation-group "lab1")
+                                     "feedback-avg" (pres/report-presentation-avg-rank conf "lab1")
+                                     "feedback" (pres/report-presentation-score conf "lab1"))]
     (register-user *chat start-talk 1 "Alice")
     (setgroup-talk 1 "/lab1setgroup")
     (setgroup-talk 1 "lgr1")
@@ -571,7 +581,7 @@
     (testing "pres group not set"
       (with-redefs [misc/today (fn [] (misc/read-time "2022.01.01 12:30 +0000"))]
         (feedback-talk 4 "/lab1feedback")
-        (ttalk/in-history *chat 4 "To send feedback, you should set your group for Lab 1 presentation by /lab1feedback")))
+        (ttalk/in-history *chat 4 "To send feedback, you should set your group for Lab 1 presentation by /lab1setgroup")))
 
     (with-redefs [misc/today (fn [] (misc/read-time "2022.01.01 12:30 +0000"))]
       (feedback-talk 1 "/lab1feedback")
@@ -607,8 +617,18 @@
                                 "2022.01.01 12:00 +0000"])))
 
       (codax/with-read-transaction [db tx]
-        (is (= 1.5 (pres/avg-rank-score tx :lab1 1)))
-        (is (= 1.5 (pres/avg-rank-score tx :lab1 2))))
+        (is (= 1.5 (pres/avg-rank tx :lab1 1)))
+        (is (= 1.5 (pres/avg-rank tx :lab1 2))))
+
+      (testing "report"
+        (report-talk 0 "/report")
+        (ttalk/in-history *chat [0
+                                 "ID;pres-group;feedback-avg;feedback"
+                                 "0;;;"
+                                 "1;lgr1;1,5;2"
+                                 "2;lgr1;1,5;4"
+                                 "3;lgr1;;"
+                                 "4;;;\n"]))
 
       (with-redefs [misc/today (fn [] (misc/read-time "2022.01.01 12:30 +0000"))]
         (feedback-talk 3 "/lab1feedback")
@@ -633,10 +653,22 @@
                                 "2022.01.01 12:00 +0000"])))
 
       (codax/with-read-transaction [db tx]
-        (is (= 1.33 (pres/avg-rank-score tx :lab1 1)))
-        (is (= 1.67 (pres/avg-rank-score tx :lab1 2)))
-        (is (= nil (pres/avg-rank-score tx :lab1 3))))
+        (is (= 1.33 (pres/avg-rank tx :lab1 1)))
+        (is (= 1.67 (pres/avg-rank tx :lab1 2)))
+        (is (= nil (pres/avg-rank tx :lab1 3))))
 
       (codax/with-read-transaction [db tx]
-        (is (= 4 (pres/rank-score tx conf :lab1 1)))
-        (is (= 2 (pres/rank-score tx conf :lab1 2)))))))
+        (is (= nil (pres/score tx conf :lab1 0)))
+        (is (= 4 (pres/score tx conf :lab1 1)))
+        (is (= 2 (pres/score tx conf :lab1 2)))
+        (is (= nil (pres/score tx conf :lab1 3)))))
+
+    (testing "report"
+      (report-talk 0 "/report")
+      (ttalk/in-history *chat [0
+                               "ID;pres-group;feedback-avg;feedback"
+                               "0;;;"
+                               "1;lgr1;1,33;4"
+                               "2;lgr1;1,67;2"
+                               "3;lgr1;;"
+                               "4;;;\n"]))))

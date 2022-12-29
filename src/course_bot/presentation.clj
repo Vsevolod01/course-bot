@@ -38,6 +38,10 @@
             (codax/assoc-at [id :presentation pres-key :group] text)
             talk/stop-talk)))))
 
+(defn report-presentation-group [pres-key-name]
+  (fn [_tx data id]
+    (-> data (get id) :presentation (get (keyword pres-key-name)) :group)))
+
 (defn submit-talk [db {token :token :as conf} pres-key-name]
   (let [cmd (str pres-key-name "submit")
         pres-key (keyword pres-key-name)
@@ -89,12 +93,12 @@
           :else (do (talk/send-text token id "Please, yes or no?")
                     (talk/repeat-branch tx)))))))
 
-(defn get-next-for-review [tx pres-key]
+(defn wait-for-reviews [tx pres-key]
   (->> (codax/get-at tx [])
        (filter (fn [[_id info]]
                  (and (some-> info :presentation (get pres-key) :on-review?)
                       (not (some-> info :presentation (get pres-key) :approved?)))))
-       first))
+       ))
 
 (defn topic [desc] (if (nil? desc) "nil" (-> desc str/split-lines first)))
 
@@ -135,7 +139,8 @@
       :start
       (fn [tx {{id :id} :from}]
         (general/assert-admin tx conf id)
-        (let [submition (get-next-for-review tx pres-key)]
+        (let [submitions (wait-for-reviews tx pres-key)
+              submition (first submitions)]
           (when (nil? submition)
             (talk/send-text token id "Nothing to check.")
             (talk/stop-talk tx))
@@ -143,6 +148,7 @@
                 group (-> info :presentation (get pres-key) :group)
                 desc (-> info :presentation (get pres-key) :description)
                 remarks (codax/get-at tx [stud-id :presentation pres-key :remarks])]
+            (talk/send-text token id (str "Wait for review: " (count submitions)))
             (talk/send-text token id (approved-submissions tx pres-key group))
             (when (some? remarks)
               (talk/send-text token id "Remarks:")
@@ -382,7 +388,7 @@
                                              topic)})))]
 
           (when (nil? group)
-            (talk/send-text token id (str "To send feedback, you should set your group for " name " by /" cmd))
+            (talk/send-text token id (str "To send feedback, you should set your group for " name " by /" pres-key-name "setgroup"))
             (talk/stop-talk tx))
 
           (when (nil? dt)
@@ -417,6 +423,7 @@
 
           (talk/send-text token id "Thanks, your feedback saved!")
           (-> tx
+              ;; TODO: move :feedback-from into [:feedback :from]
               (codax/update-at [:presentation pres-key group dt :feedback-from]
                                conj id)
               (codax/update-at [:presentation pres-key group dt :feedback]
@@ -426,10 +433,10 @@
 
 (defn drop-talk [db {token :token :as conf} pres-key-name drop-all]
   (let [cmd (str pres-key-name "drop" (when drop-all "all"))
-        help (str "for teacher, drop '" name "' for specific student ("
-                  (if drop-all "all" "only schedule") ")")
         pres-key (keyword pres-key-name)
         name (-> conf (get pres-key) :name)
+        help (str "for teacher, drop '" name "' for specific student ("
+                  (if drop-all "all" "only schedule") ")")
         groups (-> conf (get pres-key) :groups)
         groups-text (->> groups keys sort (str/join ", "))]
     (talk/def-talk db cmd help
@@ -472,7 +479,7 @@
                                     (into {})))
                talk/stop-talk)))))))
 
-(defn avg-rank-score [tx pres-key stud-id]
+(defn avg-rank [tx pres-key stud-id]
   (let [group (codax/get-at tx [stud-id :presentation pres-key :group])
         feedback (some
                   (fn [[_dt fb]] (when (some #(= % stud-id) (:stud-ids fb)) fb))
@@ -486,21 +493,32 @@
       (let [avg (/ (->> ranks (map :rank) (apply +)) (count ranks))]
         (Double/parseDouble (format "%.2f" (double avg)))))))
 
-(defn rank-score [tx conf pres-key stud-id]
+(defn score [tx conf pres-key stud-id]
+  "by the configuration"
   (let [scores (-> conf (get pres-key) :feedback-scores)
         group (codax/get-at tx [stud-id :presentation pres-key :group])
-
         feedback (some
                   (fn [[_dt fb]] (when (some #(= % stud-id) (:stud-ids fb)) fb))
-                  (codax/get-at tx [:presentation pres-key group]))
-        stud-ids (-> feedback :stud-ids)
-        ranks (->> stud-ids
-                   (map (fn [id] {:stud-id id
-                                  :avg-rank (avg-rank-score tx pres-key id)}))
-                   (sort-by :avg-rank)
-                   (map-indexed (fn [idx rank] (assoc rank :rank (+ 1 idx)))))
+                  (codax/get-at tx [:presentation pres-key group]))]
+    (when (and (some? group) (some? feedback))
+      (let [stud-ids (-> feedback :stud-ids)
+            ranks (->> stud-ids
+                       (map (fn [id] {:stud-id id
+                                      :avg-rank (avg-rank tx pres-key id)}))
+                       (sort-by :avg-rank)
+                       (map-indexed (fn [idx rank] (assoc rank :rank (+ 1 idx)))))
 
-        rank (some #(when (= stud-id (:stud-id %)) (:rank %)) ranks)]
-    (-> scores
-        (get (count ranks))
-        (nth (- rank 1)))))
+            rank (some #(when (= stud-id (:stud-id %)) (:rank %)) ranks)]
+        (-> scores
+            (get (count ranks))
+            (nth (- rank 1)))))))
+
+(defn report-presentation-avg-rank [conf pres-key-name]
+  (fn [tx _data id]
+    (-> (avg-rank tx (keyword pres-key-name) id)
+        str
+        (str/replace #"\." ","))))
+
+(defn report-presentation-score [conf pres-key-name]
+  (fn [tx _data id]
+    (score tx conf (keyword pres-key-name) id)))
